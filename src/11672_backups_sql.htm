@@ -1,0 +1,51 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<!-- saved from url=(0050)http://www.sqlteam.com/downloads/11672_backups.sql -->
+<HTML><HEAD>
+<META http-equiv=Content-Type content="text/html; charset=gb2312">
+<META content="MSHTML 6.00.2900.2995" name=GENERATOR></HEAD>
+<BODY>if exists (select * from sysobjects where id = 
+object_id(N'[dbo].[spBackupAllDatabases]') and OBJECTPROPERTY(id, 
+N'IsProcedure') = 1) drop procedure [dbo].[spBackupAllDatabases] go Create 
+Procedure spBackupAllDatabases @Path varchar(128) , @Type varchar(4) -- Full / 
+Log as /* Backup file format <DBNAME>_Full_yyyymmdd_hhmmss.bak 
+<DBNAME>_Log_yyyymmdd_hhmmss.bak exec spBackupAllDatabases 'c:\SQLBackups\', 
+'Full' */ /* drop table DatabaseBackup Create table DatabaseBackup ( Name 
+varchar(128) primary key nonclustered , BackupFlagFull varchar(1) not null check 
+(BackupFlagFull in ('Y','N')) , BackupFlagLog varchar(1) not null check 
+(BackupFlagLog in ('Y','N')) , RetentionPeriodFull datetime not null , 
+RetentionPeriodLog datetime not null ) */ set nocount on declare @sql 
+varchar(1000) -- Get all database names create table #DBName ( ID int identity 
+(1,1) , Name varchar(128) not null , RetentionPeriod datetime null ) insert 
+#DBName (Name) select name from master..sysdatabases -- Include any new 
+databases in the backup insert DatabaseBackup ( Name , BackupFlagFull , 
+BackupFlagLog , RetentionPeriodFull , RetentionPeriodLog ) select #DBName.Name , 
+'Y' , 'N' , '7 jan 1900' , -- default one week '1 jan 1900' from #DBName left 
+outer join DatabaseBackup on DatabaseBackup.Name = #DBName.Name where 
+DatabaseBackup.Name is null and lower(#DBName.Name) &lt;&gt; 'tempdb' -- Remove 
+any non-existant databases delete DatabaseBackup where not exists ( select * 
+from #DBName where #DBName.Name = DatabaseBackup.Name ) delete #DBName create 
+table #ExistingBackups ( Name varchar(128) , ID int identity (1,1) ) -- loop 
+through databases declare @Name varchar(128) , @RetentionPeriod datetime , 
+@LastBackupToKeep varchar(8) , @ID int , @MaxID int insert #DBName (Name, 
+RetentionPeriod) select Name, case when @Type = 'Full' then RetentionPeriodFull 
+else RetentionPeriodLog end from DatabaseBackup where (@Type = 'Full' and 
+BackupFlagFull = 'Y') or (@Type = 'Log' and BackupFlagLog = 'Y') select @MaxID = 
+max(ID) , @ID = 0 from #DBName while @ID &lt; @MaxID begin -- get next database 
+to backup select @ID = min(ID) from #DBName where ID &gt; @ID select @Name = 
+Name , @RetentionPeriod = RetentionPeriod from #DBName where ID = @ID -- Delete 
+old backups delete #ExistingBackups select @sql = 'dir /B ' + @Path select @sql 
+= @sql + @Name + '_' + @Type + '*.*' insert #ExistingBackups exec 
+master..xp_cmdshell @sql if exists (select * from #ExistingBackups where Name 
+like '%File Not Found%') delete #ExistingBackups select @LastBackupToKeep = 
+convert(varchar(8),getdate() - @RetentionPeriod,112) delete #ExistingBackups 
+where Name &gt; @Name + '_' + @Type + '_' + @LastBackupToKeep declare @eID int , 
+@eMaxID int , @eName varchar(128) -- loop round all the out of date backups 
+select @eID = 0 , @eMaxID = coalesce(max(ID), 0) from #ExistingBackups while 
+@eID &lt; @eMaxID begin select @eID = min(ID) from #ExistingBackups where ID 
+&gt; @eID select @eName = Name from #ExistingBackups where ID = @eID select @sql 
+= 'del ' + @Path + @eName exec master..xp_cmdshell @sql end delete 
+#ExistingBackups -- now do the backup select @sql = @Path + @Name + '_' + @Type 
++ '_' + convert(varchar(8),getdate(),112) + '_' + 
+replace(convert(varchar(8),getdate(),108),':','') + '.bak' if @Type = 'Full' 
+backup database @Name to disk = @sql else backup log @Name to disk = @sql end go 
+</BODY></HTML>

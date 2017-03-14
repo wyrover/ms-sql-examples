@@ -1,0 +1,33 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN">
+<!-- saved from url=(0048)http://www.sqlteam.com/downloads/sp_SMTPMail.sql -->
+<HTML><HEAD>
+<META http-equiv=Content-Type content="text/html; charset=gb2312">
+<META content="MSHTML 6.00.2900.2995" name=GENERATOR></HEAD>
+<BODY>IF EXISTS ( SELECT NAME FROM sysobjects WHERE name = 'sp_SMTPMail' AND 
+type = 'P') DROP PROCEDURE sp_SMTPMail GO /* 
+--============================================================================================= 
+--== Name - sp_SMTPMail --== Purpose - Send an email using an SMTP Mailer COM 
+Component --== Input Parameters - @SenderName, @SenderAddress, @RecipientName, 
+@RecipientAddress --== @Subject, @Body, @MailServer --== --== --== Usage - exec 
+sp_SMTPMail @SenderName='Damian', @SenderAddress='damian@bdussy.com', --== 
+@RecipientName = 'Someone', @RecipientAddress = 'someone@someplace.com', --== 
+@Subject='SQL Test', @body='Hello, this is a test email from SQL Server' --== 
+--== Created Date - Thursday, July 19, 2001 --== Created by - Damian Maclennan 
+--== merkin@sqlteam.com --== www.bdussy.com/damian --== --== Disclaimer - This 
+procedure has been created for demonstration purposes. It has not --== been 
+created for production purposes and I hold no liability for any --== unwanted 
+effects of running it. 
+--============================================================================================= 
+*/ Create Procedure sp_SMTPMail @SenderName varchar(100), @SenderAddress 
+varchar(100), @RecipientName varchar(100), @RecipientAddress varchar(100), 
+@Subject varchar(200), @Body varchar(8000), @MailServer varchar(100) = 
+'localhost' AS SET nocount on declare @oMail int --Object reference declare 
+@resultcode int EXEC @resultcode = sp_OACreate 'SMTPsvg.Mailer', @oMail OUT if 
+@resultcode = 0 BEGIN EXEC @resultcode = sp_OASetProperty @oMail, 'RemoteHost', 
+@mailserver EXEC @resultcode = sp_OASetProperty @oMail, 'FromName', @SenderName 
+EXEC @resultcode = sp_OASetProperty @oMail, 'FromAddress', @SenderAddress EXEC 
+@resultcode = sp_OAMethod @oMail, 'AddRecipient', NULL, @RecipientName, 
+@RecipientAddress EXEC @resultcode = sp_OASetProperty @oMail, 'Subject', 
+@Subject EXEC @resultcode = sp_OASetProperty @oMail, 'BodyText', @Body EXEC 
+@resultcode = sp_OAMethod @oMail, 'SendMail', NULL EXEC sp_OADestroy @oMail END 
+SET nocount off GO </BODY></HTML>

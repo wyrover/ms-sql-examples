@@ -1,0 +1,141 @@
+Essential SQL Server Date and Time Functions 
+
+Part I: Standard Date and Time Functions
+
+I've posted some variations of these before, but here they all are in 1 easy package:  The essential date and time functions that every SQL Server database should have to ensure that you can easily manipulate dates and times without the need for any formatting considerations at all.
+
+They are simple, easy, and brief and you should use them any time you need to incorporate any date literals or date math in your T-SQL code.  I have always wondered why T-SQL omits these basic functions, but the beauty of user defined functions is that we can create them ourselves.
+
+create  function DateOnly(@DateTime DateTime)
+-- Strips out the time portion of any dateTime value.
+returns datetime
+as
+    begin
+    return dateadd(dd,0, datediff(dd,0,@DateTime))
+    end
+go
+
+create function Date(@Year int, @Month int, @Day int)
+-- returns a datetime value for the specified year, month and day
+returns datetime
+as
+    begin
+    return dateadd(year, (@Year-1900),0) + dateadd(month, @Month-1,0) + dateadd(day, @Day-1,0)
+    end
+go
+
+create function Time(@Hour int, @Minute int, @Second int)
+-- Returns a datetime value for the specified time at the "base" date (1/1/1900)
+returns datetime
+as
+    begin
+    return dateadd(hour, @Hour, 0) + dateadd(minute, @Minute,0) + dateAdd(second, @Second,0)
+    end
+go
+
+create function TimeOnly(@DateTime DateTime)
+-- returns the only the time portion of a date, at the "base" date (1/1/1900)
+returns datetime
+as
+    begin
+    return @DateTime - dbo.DateOnly(@DateTime)
+    end
+go
+
+create function DateTime(@Year int, @Month int, @Day int, @Hour int, @Minute int, @Second int)
+-- returns a dateTime value for the date and time specified.
+returns datetime
+as
+    begin
+    return dbo.Date(@Year,@Month,@Day) + dbo.Time(@Hour, @Minute,@Second)
+    end
+go
+
+Remember that you must prefix UDFs with the owner (usually dbo) when calling them.
+
+Usage Examples:
+
+1)  where TransactionDate >= dbo.Date(2005,1,2)  -- no formatting or implicit string conversions needed for date literals
+
+2) select dbo.Date(year(getdate()), 1,1) -- returns the first day of the year for the current year.
+
+3) select dbo.DateOnly(getdate()) -- returns only the date portion of the current day.
+
+4) if dbo.TimeOnly(SomeDate) = dbo.Time(5,30,0)  -- check to see if the time for a given date is at 5:30 AM
+
+5) select dbo.Date(year(getdate()), month(getdate()),1) -- returns the first day of the current month.
+
+6) select dbo.Date(year(getdate()), month(getdate())+1,0) -- returns the last day of the current month.
+
+7) where SomeDate >= dbo.DateOnly(getdate()) and SomeDate < dbo.DateOnly(getDate())+1 -- a simple way to get all transactions that occurred on the current date
+
+8) select dbo.DateOnly(getdate()) + 1 + dbo.Time(14,30,0) -- returns tomorrow at 2:30 PM.
+
+and so on ....
+
+Part II:  Introducing TimeSpans to SQL Server
+
+With those functions in place, we can add two more that will give us further flexibility when working with dates and times: The concept of a "TimeSpan", very similar to what is available in the .NET framework.
+
+create function TimeSpan(@Days int, @Hours int, @Minutes int, @Seconds int)
+-- returns a datetime the specified # of days/hours/minutes/seconds from the "base" date of 1/1/1900 (a "TimeSpan")
+returns datetime
+as
+    begin
+    return dbo.Time(@Hours,@Minutes,@Seconds) + @Days
+    end
+
+create function TimeSpanUnits(@Unit char(1), @TimeSpan datetime)
+-- returns the # of units specified in the TimeSpan.
+-- The Unit parameter can be: "d" = days, "h" = hours, "m" = minutes, "s" = seconds
+returns int
+as
+    begin
+    return case @Unit 
+        when 'd' then datediff(day, 0, @TimeSpan)
+        when 'h' then datediff(hour, 0, @TimeSpan)
+        when 'm' then datediff(minute, 0, @TimeSpan)
+        when 's' then datediff(second, 0, @TimeSpan)
+        else Null end
+    end
+
+Here, a TimeSpan is just a datetime offset from the "base" date of 1/1/1900.  Creating one is the same as creating a Time using the Time() function, but we have added a parameter for Days to give more flexibility.
+
+The TimeSpanUnits() function works similar to standard T-SQL DatePart() function, but it returns the total # of units in the given time span.  So, if you create a time span of 1 day and 2 hours, then TimeSpanUnits("d") will return 1 and TimeSpanUnits("h") will return 26.  Negative values can be returned as well.  You also may wish to implement the TimeSpanUnits() function as multiple functions, one per unit (e.g., TimeSpanHours(), TimeSpanDays(), etc) depending on your preference.
+
+Of course, a simple way to create a TimeSpan is to simply subtract two standard T-SQL DateTimes.  Also please note that we can add and subtract Dates, Times, and TimeSpans all together using standard + and - operators and everything will work as expected.  We can also add integers to our Dates and Times which will add entire days to the values.
+
+Here's a TimeSpan usage example:
+
+declare @Deadline datetime -- remember, we still use standard datetimes for everything, include TimeSpans
+set @Deadline = dbo.TimeSpan(2,0,0,0)   -- the deadline is two days
+
+declare @CreateDate datetime
+declare @ResponseDate datetime
+
+set @CreateDate = dbo.DateTime(2006,1,3,8,30,0)  -- Jan 3, 2006, 8:30 AM
+set @ResponseDate = getdate() -- today
+
+-- See if the response date is past the deadline:
+select case when @ResponseDate > @CreateDate + @Deadline then 'overdue.' else 'on time.' end as Result
+
+-- Find out how many total hours it took to respond:   
+declare @TimeToRepond datetime
+set @TimeToRespond = @ResponseDate - @CreateDate
+
+select dbo.TimeSpanUnits('h', @TimeToRespond) as ResponseTotalHours
+
+-- Return the response time as # of days, # of hours, # of minutes:
+select dbo.TimeSpanUnits('d',@TimeToRespond) as Days, DatePart(hour, @TimeToRespond) as Hours, DatePart(minute, @TimeToRespond) as Minutes
+
+-- Return two days and two hours from now:
+select getdate() + dbo.TimeSpan(2,2,0,0)
+
+
+Part III: Conclusion
+
+We're not working with magic here, or creating new data types or concepts or incorporating the CLR into our database.  We are simply using the existing DateTime datatype to make our lives very easy and to implement efficient and simple date and time manipulation in T-SQL.
+
+The fact that DateTimes are stored as standard numeric values and the fact that they can be added, subtracted and compared and that there is a standard "base" value (that evaluates to a numerical value of 0) means that we have all the power we need to do all kinds of things in T-SQL; we just need a few functions to help us out.
+
+Final Note:  if you need the accuracy of milliseconds in your application, it is very easy to alter the above functions (or add new ones) that allow you to specify milliseconds in your times.  
